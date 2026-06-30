@@ -79,22 +79,26 @@ def build_api_server():
 
 
 def build_cli_tool():
-    """构建 CLI 下载工具单文件"""
+    """构建纯 CLI 下载工具（无 GUI 依赖）"""
     print("\n" + "=" * 60)
-    print("  构建 CLI 下载工具...")
+    print("  构建纯 CLI 下载工具...")
     print("=" * 60)
 
     cmd = [
         sys.executable, "-m", "PyInstaller",
         "--onefile",
-        "--name", "hyperdownloader-cli",
+        "--name", f"hyperdownloader-cli-{VERSION}",
         "--distpath", DIST_DIR,
         "--hidden-import", "requests",
         "--hidden-import", "urllib3",
         "--collect-submodules", "hyperdownloader",
+        "--exclude-module", "tkinter",
+        "--exclude-module", "tkinterdnd2",
+        "--exclude-module", "PIL",
+        "--exclude-module", "PIL.Image",
         "--optimize", "2",
         "--console",
-        os.path.join(ROOT, "tools", "drag_drop_downloader.py"),
+        os.path.join(ROOT, "hyperdownloader", "cli.py"),
     ]
 
     result = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
@@ -121,6 +125,15 @@ def main():
 
     ok1 = build_api_server()
     ok2 = build_cli_tool()
+
+    # 重命名纯 CLI：去掉版本号后缀
+    cli_src = os.path.join(DIST_DIR, f"hyperdownloader-cli-{VERSION}.exe")
+    cli_dst = os.path.join(DIST_DIR, "hyperdownloader-cli.exe")
+    if os.path.exists(cli_src):
+        if os.path.exists(cli_dst):
+            os.remove(cli_dst)
+        os.rename(cli_src, cli_dst)
+        ok2 = True
 
     print("\n" + "=" * 60)
     if ok1 or ok2:
