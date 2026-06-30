@@ -192,35 +192,6 @@ hyperdownloader-core/
 pytest tests/ -v
 ```
 
-## 集成到 SoftwareBatchInstaller
-
-由于 HyperDownloader Core **完全不依赖任何 GUI 框架**，集成只需要：
-
-```python
-from hyperdownloader import HyperDownloader, DownloadTask
-
-class YourInstaller:
-    def __init__(self):
-        self.engine = HyperDownloader(max_concurrent=3)
-
-    def download_software(self, url, dest):
-        task = DownloadTask(
-            url=url,
-            save_dir=dest,
-            on_progress=self._on_progress,
-            on_complete=self._on_complete,
-        )
-        return self.engine.download(task)
-
-    def _on_progress(self, progress):
-        # 将进度数据映射到你的 UI
-        pass
-
-    def _on_complete(self, result):
-        # 下载完成后触发安装流程
-        pass
-```
-
 ## 许可证
 
 MIT
