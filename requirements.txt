@@ -1,0 +1,9 @@
+# HyperDownloader Core 依赖
+requests>=2.28.0
+
+# 可选：SOCKS5 代理支持
+# PySocks>=1.7.1
+
+# 开发依赖
+# pytest>=7.0
+# pytest-cov>=4.0
