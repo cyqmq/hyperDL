@@ -33,14 +33,18 @@ _STATIC_DIR = os.path.normpath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "tools")
 )
 
-# ── 全局任务仓库 ──
-_tasks: dict[str, TaskDownloader] = {}
+# ── 全局任务仓库（支持多任务并发下载）──
+_tasks: dict[str, TaskDownloader] = {}       # 所有任务（运行中 + 排队中）
 _tasks_lock = threading.Lock()
+_max_concurrent = 5                           # 最大并发下载数
+_pending_queue: list[dict] = []               # 排队等待的任务参数
+_queue_lock = threading.Lock()
+_queue_thread_running = False
 
 
-def _create_task(url: str, save_dir: str, filename: Optional[str] = None,
-                 segments: int = 4, expected_sha256: Optional[str] = None) -> str:
-    """创建下载任务并立即启动"""
+def _start_task_directly(url: str, save_dir: str, filename: Optional[str] = None,
+                         segments: int = 4, expected_sha256: Optional[str] = None) -> str:
+    """直接启动一个下载任务（不排队）"""
     config = DownloadConfig(max_segments=segments)
     task = DownloadTask(
         url=url, save_dir=save_dir, filename=filename,
@@ -52,6 +56,91 @@ def _create_task(url: str, save_dir: str, filename: Optional[str] = None,
     dl.start()
     logger.info("任务已启动: %s [%s]", url, task.task_id)
     return task.task_id
+
+
+def _try_start_task(url: str, save_dir: str, filename: Optional[str] = None,
+                    segments: int = 4, expected_sha256: Optional[str] = None) -> tuple[str, bool]:
+    """
+    尝试启动任务。如果并发数未满则立即启动，否则加入排队队列。
+
+    Returns:
+        (task_id, 是否立即启动)
+    """
+    with _tasks_lock:
+        running = sum(1 for d in _tasks.values()
+                      if d.status == DownloadStatus.RUNNING)
+        if running < _max_concurrent:
+            # 有可用槽位，直接启动
+            return _start_task_directly(url, save_dir, filename, segments, expected_sha256), True
+
+    # 并发已满，加入排队队列
+    with _queue_lock:
+        _pending_queue.append({
+            "url": url, "save_dir": save_dir, "filename": filename,
+            "segments": segments, "expected_sha256": expected_sha256,
+        })
+    logger.info("并发已满，任务排队: %s (运行中 %d)", url, running)
+    _ensure_queue_worker()
+    return "", False
+
+
+def _ensure_queue_worker():
+    """确保排队调度线程在运行"""
+    global _queue_thread_running
+    if _queue_thread_running:
+        return
+    _queue_thread_running = True
+    t = threading.Thread(target=_queue_worker, daemon=True, name="api-queue")
+    t.start()
+
+
+def _queue_worker():
+    """排队调度线程：监视频道，有空位就取出排队任务"""
+    import time
+    global _queue_thread_running
+    try:
+        while True:
+            # 检查是否有空位
+            with _tasks_lock:
+                running = sum(1 for d in _tasks.values()
+                              if d.status == DownloadStatus.RUNNING)
+            # 清理已完成的任务
+            _cleanup_finished()
+
+            if running < _max_concurrent:
+                with _queue_lock:
+                    if _pending_queue:
+                        item = _pending_queue.pop(0)
+                        with _tasks_lock:
+                            new_running = sum(1 for d in _tasks.values()
+                                              if d.status == DownloadStatus.RUNNING)
+                            if new_running < _max_concurrent:
+                                _start_task_directly(
+                                    item["url"], item["save_dir"], item["filename"],
+                                    item["segments"], item["expected_sha256"],
+                                )
+                                continue
+                            else:
+                                # 又被占满了，放回去
+                                _pending_queue.insert(0, item)
+
+            if not _pending_queue:
+                break  # 队列为空，结束线程
+
+            time.sleep(1)
+    finally:
+        _queue_thread_running = False
+
+
+def _cleanup_finished():
+    """清理已结束的任务"""
+    with _tasks_lock:
+        finished = [
+            tid for tid, dl in list(_tasks.items())
+            if dl.status in (DownloadStatus.COMPLETED, DownloadStatus.FAILED, DownloadStatus.CANCELLED)
+        ]
+        for tid in finished:
+            _tasks.pop(tid, None)
 
 
 def _snapshot(dl: TaskDownloader) -> dict:
@@ -160,7 +249,24 @@ class APIHandler(BaseHTTPRequestHandler):
         """GET /api/tasks"""
         with _tasks_lock:
             items = [_snapshot(dl) for dl in _tasks.values()]
-        self._send(200, {"tasks": items, "count": len(items)})
+        with _queue_lock:
+            queued = len(_pending_queue)
+        running = sum(1 for t in items if t["status"] == "RUNNING")
+        pending = sum(1 for t in items if t["status"] == "PENDING")
+        paused = sum(1 for t in items if t["status"] == "PAUSED")
+        completed = sum(1 for t in items if t["status"] == "COMPLETED")
+        self._send(200, {
+            "tasks": items,
+            "count": len(items),
+            "queue": {
+                "running": running,
+                "pending": pending,
+                "paused": paused,
+                "completed": completed,
+                "queued": queued,
+                "max_concurrent": _max_concurrent,
+            },
+        })
 
     def _get_task(self, path: str):
         """GET /api/tasks/{id}"""
@@ -183,12 +289,19 @@ class APIHandler(BaseHTTPRequestHandler):
         segments = body.get("max_segments", 4)
         expected_sha256 = body.get("expected_sha256")
         os.makedirs(save_dir, exist_ok=True)
-        tid = _create_task(url, save_dir, filename, segments, expected_sha256)
-        self._send(201, {
-            "task_id": tid, "url": url,
-            "save_dir": save_dir, "filename": filename or "",
-            "status": "PENDING",
-        })
+        tid, immediate = _try_start_task(url, save_dir, filename, segments, expected_sha256)
+        if immediate:
+            self._send(201, {
+                "task_id": tid, "url": url,
+                "save_dir": save_dir, "filename": filename or "",
+                "status": "RUNNING",
+            })
+        else:
+            self._send(202, {
+                "url": url,
+                "message": "并发已满，任务已排队，有空位时自动开始",
+                "status": "QUEUED",
+            })
 
     def _pause_task(self, path: str):
         tid = self._task_id_from_path(path)
@@ -213,8 +326,11 @@ class APIHandler(BaseHTTPRequestHandler):
 
     def _stats(self):
         """GET /api/stats"""
+        _cleanup_finished()
         with _tasks_lock:
             vals = list(_tasks.values())
+        with _queue_lock:
+            queued = len(_pending_queue)
         running = sum(1 for d in vals if d.status == DownloadStatus.RUNNING)
         pending = sum(1 for d in vals if d.status == DownloadStatus.PENDING)
         paused = sum(1 for d in vals if d.status == DownloadStatus.PAUSED)
@@ -223,6 +339,7 @@ class APIHandler(BaseHTTPRequestHandler):
         self._send(200, {
             "running": running, "pending": pending, "paused": paused,
             "failed": failed, "completed": completed, "total": len(vals),
+            "queued": queued, "max_concurrent": _max_concurrent,
         })
 
     def _get_config(self):
