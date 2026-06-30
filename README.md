@@ -44,8 +44,8 @@ pip install hyperdownloader-core
 或直接使用源码：
 
 ```bash
-git clone https://github.com/your-org/hyperdownloader-core.git
-cd hyperdownloader-core
+git clone https://github.com/cyqmq/hyperDL.git
+cd hyperDL
 pip install -r requirements.txt
 ```
 
