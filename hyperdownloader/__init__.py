@@ -44,4 +44,4 @@ __all__ = [
     "format_time",
 ]
 
-__version__ = "1.0.5"
+__version__ = "1.0.6"
