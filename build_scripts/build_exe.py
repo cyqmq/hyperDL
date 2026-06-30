@@ -116,6 +116,40 @@ def build_cli_tool():
     return False
 
 
+def build_gui_tool():
+    """构建 GUI 拖拽下载工具（含 Tkinter）"""
+    print("\n" + "=" * 60)
+    print("  构建 GUI 拖拽下载工具...")
+    print("=" * 60)
+
+    cmd = [
+        sys.executable, "-m", "PyInstaller",
+        "--onefile",
+        "--name", f"hyperdownloader-gui-{VERSION}",
+        "--distpath", DIST_DIR,
+        "--hidden-import", "requests",
+        "--hidden-import", "urllib3",
+        "--collect-submodules", "hyperdownloader",
+        "--optimize", "2",
+        "--console",
+        os.path.join(ROOT, "tools", "drag_drop_downloader.py"),
+    ]
+
+    result = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
+    if result.returncode != 0:
+        print("  ❌ 构建失败:")
+        print(result.stderr)
+        return False
+
+    for f in os.listdir(DIST_DIR):
+        if f.endswith(".exe") and "gui" in f:
+            exe_path = os.path.join(DIST_DIR, f)
+            print(f"  ✅ 生成: {exe_path}")
+            print(f"     大小: {os.path.getsize(exe_path) >> 20} MB")
+            return True
+    return False
+
+
 def main():
     print(f"  HyperDownloader Core v{VERSION} — 单文件构建")
     print(f"  Python: {sys.version}")
@@ -125,27 +159,26 @@ def main():
 
     ok1 = build_api_server()
     ok2 = build_cli_tool()
+    ok3 = build_gui_tool()
 
-    # 重命名纯 CLI：去掉版本号后缀
-    cli_src = os.path.join(DIST_DIR, f"hyperdownloader-cli-{VERSION}.exe")
-    cli_dst = os.path.join(DIST_DIR, "hyperdownloader-cli.exe")
-    if os.path.exists(cli_src):
-        if os.path.exists(cli_dst):
-            os.remove(cli_dst)
-        os.rename(cli_src, cli_dst)
-        ok2 = True
+    # 重命名：去掉版本号后缀
+    for src_name, dst_name in [
+        (f"hyperdownloader-cli-{VERSION}.exe", "hyperdownloader-cli.exe"),
+        (f"hyperdownloader-gui-{VERSION}.exe", "hyperdownloader-gui.exe"),
+    ]:
+        src = os.path.join(DIST_DIR, src_name)
+        dst = os.path.join(DIST_DIR, dst_name)
+        if os.path.exists(src):
+            if os.path.exists(dst):
+                os.remove(dst)
+            os.rename(src, dst)
 
     print("\n" + "=" * 60)
-    if ok1 or ok2:
-        print("  ✅ 构建完成!")
-        if ok1:
-            s1 = os.path.getsize(os.path.join(DIST_DIR, "hyperdownloader-server.exe"))
-            print(f"     hyperdownloader-server.exe  ({s1 >> 20} MB)")
-        if ok2:
-            s2 = os.path.getsize(os.path.join(DIST_DIR, "hyperdownloader-cli.exe"))
-            print(f"     hyperdownloader-cli.exe      ({s2 >> 20} MB)")
-    else:
-        print("  ❌ 全部构建失败")
+    print("  ✅ 构建完成!")
+    for name in ["hyperdownloader-server.exe", "hyperdownloader-cli.exe", "hyperdownloader-gui.exe"]:
+        p = os.path.join(DIST_DIR, name)
+        if os.path.exists(p):
+            print(f"     {name}  ({os.path.getsize(p) >> 20} MB)")
     print("=" * 60)
 
 
