@@ -17,7 +17,7 @@ import subprocess
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(ROOT)
 
-VERSION = "1.0.4"
+VERSION = "1.0.5"
 TOOLS_DIR = os.path.join(ROOT, "tools")
 DIST_DIR = os.path.join(ROOT, "dist")
 SPEC_DIR = os.path.join(ROOT, "build_scripts")
