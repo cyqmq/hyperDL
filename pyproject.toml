@@ -7,7 +7,6 @@ name = "hyperdownloader-core"
 version = "1.0.4"
 description = "高性能多线程下载引擎 — 完全解耦，不依赖任何 GUI 框架"
 readme = "README.md"
-long_description_content_type = "text/markdown"
 requires-python = ">=3.10"
 license = {text = "MIT"}
 keywords = ["download", "downloader", "multi-thread", "http", "concurrent"]

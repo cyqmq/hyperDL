@@ -91,10 +91,13 @@ class DragDropDownloader:
         self._drop_text.insert(tk.END, "将 URL 拖入此处…\n多个 URL 每行一个\n\n比如:\nhttps://example.com/file1.zip\nhttps://example.com/file2.zip")
         self._drop_text.config(state=tk.DISABLED)
 
-        # 绑定拖拽事件
-        self._drop_text.bind("<DragEnter>", self._on_drag_enter)
-        self._drop_text.bind("<DragLeave>", self._on_drag_leave)
-        self._drop_text.bind("<Drop>", self._on_drop)
+        # 粘贴按钮（替代拖拽——标准 Tkinter 不支持原生拖拽事件）
+        paste_frame = tk.Frame(drop_frame)
+        paste_frame.grid(row=1, column=0, pady=(5, 0), sticky="ew")
+        tk.Button(paste_frame, text="📋 从剪贴板粘贴 URL", font=("Segoe UI", 9),
+                  command=self._paste_from_clipboard).pack(side=tk.LEFT, padx=(0, 8))
+        tk.Button(paste_frame, text="🧹 清空", font=("Segoe UI", 9),
+                  command=self._clear_urls).pack(side=tk.LEFT)
 
         # ═══ 设置栏 ═══
         settings_frame = tk.Frame(self.root)
@@ -326,6 +329,27 @@ class DragDropDownloader:
         """注册窗口为拖放目标（tkinterdnd2 可选）"""
         pass  # 基本拖拽通过事件绑定已支持
 
+    # ── 剪贴板 ──
+
+    def _paste_from_clipboard(self):
+        """从剪贴板粘贴 URL"""
+        try:
+            data = self.root.clipboard_get()
+        except tk.TclError:
+            data = ""
+        if data:
+            self._drop_text.config(state=tk.NORMAL)
+            self._drop_text.delete(1.0, tk.END)
+            self._drop_text.insert(tk.END, data.strip())
+            self._drop_text.config(state=tk.DISABLED)
+            self._log_write(f"📋 已从剪贴板粘贴: {data[:60]}...\n")
+
+    def _clear_urls(self):
+        """清空 URL 输入"""
+        self._drop_text.config(state=tk.NORMAL)
+        self._drop_text.delete(1.0, tk.END)
+        self._drop_text.config(state=tk.DISABLED)
+
     # ── 启动 ──
 
     def run(self):
@@ -346,18 +370,37 @@ class DragDropDownloader:
 
 
 def main():
-    # 检查是否在非 GUI 环境
-    if "--cli" in sys.argv:
+    if len(sys.argv) > 1 and sys.argv[1] == "--cli":
         # CLI 模式：从命令行参数获取 URL
-        url = sys.argv[sys.argv.index("--cli") + 1] if len(sys.argv) > sys.argv.index("--cli") + 1 else ""
+        url = sys.argv[2] if len(sys.argv) > 2 else ""
         if url:
             _cli_download(url)
         else:
-            print("用法: python drag_drop_downloader.py --cli <URL>")
+            print("用法: hyperdownloader-cli.exe --cli <URL>")
+            print("示例: hyperdownloader-cli.exe --cli https://example.com/file.zip")
         return
 
-    app = DragDropDownloader()
-    app.run()
+    # 无参数：显示使用说明（避免在没有 GUI 的环境崩溃）
+    print("=" * 60)
+    print("  HyperDownloader Core — 命令行下载工具")
+    print("=" * 60)
+    print()
+    print("用法:")
+    print("  hyperdownloader-cli.exe --cli <URL>")
+    print()
+    print("示例:")
+    print('  hyperdownloader-cli.exe --cli "https://example.com/file.zip"')
+    print()
+    print("拖拽下载: 将链接拖到 拖拽下载.bat 上")
+    print("Web 界面: hyperdownloader-server.exe  →  http://127.0.0.1:8765/")
+    print()
+    # 尝试启动 GUI（仅在明确有 GUI 环境时）
+    try:
+        app = DragDropDownloader()
+        app.run()
+    except Exception as e:
+        print(f"GUI 不可用: {e}")
+        print("请使用 --cli 参数进行命令行下载")
 
 
 def _cli_download(url: str):

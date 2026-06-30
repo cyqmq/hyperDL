@@ -172,6 +172,9 @@ class TaskDownloader:
             # Step 5: 合并 / 重命名文件
             self._finalize()
 
+        except _SkipDownload:
+            # 文件已存在且完整，正常跳过
+            pass
         except Exception as e:
             self._task.status = DownloadStatus.FAILED
             self._error = str(e)
