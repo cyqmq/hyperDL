@@ -242,8 +242,11 @@ class DownloadScheduler:
     def _run_loop(self) -> None:
         """调度器主循环"""
         while self._running and not self._stop_event.is_set():
-            self._dispatch()
-            self._cleanup_completed()
+            try:
+                self._dispatch()
+                self._cleanup_completed()
+            except Exception:
+                logger.exception("调度器循环异常，已自动恢复")
             self._stop_event.wait(timeout=0.3)
 
     def _dispatch(self) -> None:

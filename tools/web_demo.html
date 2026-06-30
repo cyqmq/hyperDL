@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HyperDownloader — Web 前端演示</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, 'Segoe UI', sans-serif; background: #0d1117; color: #c9d1d9; min-height: 100vh; }
+  .container { max-width: 900px; margin: 0 auto; padding: 30px 20px; }
+  h1 { font-size: 24px; margin-bottom: 5px; color: #58a6ff; }
+  .subtitle { color: #8b949e; font-size: 14px; margin-bottom: 25px; }
+  .card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 20px; margin-bottom: 16px; }
+  .card-title { font-size: 14px; font-weight: 600; color: #8b949e; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 12px; }
+
+  /* 表单 */
+  .form-row { display: flex; gap: 8px; }
+  .form-row input { flex: 1; padding: 10px 14px; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; color: #c9d1d9; font-size: 14px; }
+  .form-row input:focus { outline: none; border-color: #58a6ff; }
+  .form-row select { padding: 10px; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; color: #c9d1d9; }
+  .btn { padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600; transition: .2s; white-space: nowrap; }
+  .btn-primary { background: #238636; color: #fff; }
+  .btn-primary:hover { background: #2ea043; }
+  .btn-danger { background: #da3633; color: #fff; }
+  .btn-danger:hover { background: #f85149; }
+  .btn-secondary { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; }
+  .btn-secondary:hover { background: #30363d; }
+  .btn-sm { padding: 5px 12px; font-size: 12px; }
+
+  /* 任务列表 */
+  .task-list { display: flex; flex-direction: column; gap: 8px; }
+  .task-item { background: #0d1117; border: 1px solid #21262d; border-radius: 6px; padding: 14px; transition: .2s; }
+  .task-item:hover { border-color: #30363d; }
+  .task-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .task-url { font-size: 13px; color: #8b949e; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 400px; }
+  .task-status { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 10px; }
+  .status-RUNNING { background: #1f6feb22; color: #58a6ff; }
+  .status-PENDING { background: #d2992222; color: #d29922; }
+  .status-COMPLETED { background: #23863622; color: #3fb950; }
+  .status-FAILED { background: #da363322; color: #f85149; }
+  .status-PAUSED { background: #8b949e22; color: #8b949e; }
+  .status-CANCELLED { background: #da363322; color: #f85149; }
+
+  .progress-bar { height: 6px; background: #21262d; border-radius: 3px; overflow: hidden; margin: 8px 0; }
+  .progress-fill { height: 100%; background: #2ea043; border-radius: 3px; transition: width .5s; }
+  .progress-fill.paused { background: #d29922; }
+  .progress-fill.failed { background: #f85149; }
+
+  .task-info { display: flex; gap: 16px; font-size: 12px; color: #8b949e; }
+  .task-info span { display: flex; align-items: center; gap: 4px; }
+  .task-actions { display: flex; gap: 6px; margin-top: 8px; }
+
+  /* 统计 */
+  .stats { display: flex; gap: 20px; }
+  .stat-item { text-align: center; }
+  .stat-value { font-size: 28px; font-weight: 700; color: #58a6ff; }
+  .stat-label { font-size: 12px; color: #8b949e; }
+
+  /* 状态栏 */
+  .status-bar { position: fixed; bottom: 0; left: 0; right: 0; background: #161b22; border-top: 1px solid #30363d; padding: 10px 20px; display: flex; justify-content: space-between; font-size: 12px; color: #8b949e; }
+  .empty { text-align: center; padding: 40px; color: #484f58; }
+  .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid #30363d; border-top-color: #58a6ff; border-radius: 50%; animation: spin .8s linear infinite; vertical-align: middle; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>⚡ HyperDownloader Core</h1>
+  <p class="subtitle">Web 前端演示 — API 地址: <span id="apiUrl">http://127.0.0.1:8765</span></p>
+
+  <!-- 统计 -->
+  <div class="card">
+    <div class="card-title">引擎状态</div>
+    <div class="stats">
+      <div class="stat-item"><div class="stat-value" id="statActive">0</div><div class="stat-label">下载中</div></div>
+      <div class="stat-item"><div class="stat-value" id="statPending">0</div><div class="stat-label">等待中</div></div>
+      <div class="stat-item"><div class="stat-value" id="statCompleted">0</div><div class="stat-label">已完成</div></div>
+      <div class="stat-item"><div class="stat-value" id="statConcurrent">3</div><div class="stat-label">最大并发</div></div>
+    </div>
+  </div>
+
+  <!-- 添加任务 -->
+  <div class="card">
+    <div class="card-title">添加下载任务</div>
+    <div class="form-row">
+      <input type="text" id="inputUrl" placeholder="输入下载链接，如 https://example.com/file.zip" autofocus>
+      <select id="inputSegments">
+        <option value="1">1 分片</option>
+        <option value="2">2 分片</option>
+        <option value="4" selected>4 分片</option>
+        <option value="8">8 分片</option>
+      </select>
+      <button class="btn btn-primary" onclick="addTask()">+ 添加</button>
+    </div>
+  </div>
+
+  <!-- 任务列表 -->
+  <div class="card">
+    <div class="card-title" style="display:flex;justify-content:space-between">
+      <span>下载任务</span>
+      <button class="btn btn-secondary btn-sm" onclick="refreshAll()">🔄 刷新</button>
+    </div>
+    <div id="taskList" class="task-list">
+      <div class="empty">暂无任务，输入 URL 开始下载</div>
+    </div>
+  </div>
+</div>
+
+<div class="status-bar">
+  <span id="statusLeft">就绪</span>
+    <span id="statusRight">HyperDownloader Core v1.0.2</span>
+</div>
+
+<script>
+const API = document.getElementById('apiUrl').textContent;
+const POLL_INTERVAL = 5000; // 5秒轮询，降低服务器压力
+let polling = false;
+let pollTimer = null;
+
+// ── 工具 ──
+function formatSize(bytes) {
+  if (!bytes || bytes <= 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let i = 0;
+  let size = bytes;
+  while (size >= 1024 && i < units.length - 1) { size /= 1024; i++; }
+  return size.toFixed(i > 0 ? 1 : 0) + ' ' + units[i];
+}
+
+function formatSpeed(bps) { return formatSize(bps) + '/s'; }
+
+function formatTime(s) {
+  s = Math.floor(s || 0);
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+  if (h) return `${h}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+  return `${m}:${String(sec).padStart(2,'0')}`;
+}
+
+function escapeHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+// ── API 调用 ──
+async function api(method, path, body) {
+  const opt = { method, headers: { 'Content-Type': 'application/json' } };
+  if (body) opt.body = JSON.stringify(body);
+  const r = await fetch(API + path, opt);
+  if (!r.ok) {
+    const err = await r.text();
+    throw new Error(`HTTP ${r.status}: ${err.slice(0, 100)}`);
+  }
+  return r.json();
+}
+
+// ── 添加任务 ──
+async function addTask() {
+  const url = document.getElementById('inputUrl').value.trim();
+  if (!url) return;
+  const segments = parseInt(document.getElementById('inputSegments').value);
+  document.getElementById('inputUrl').value = '';
+  document.getElementById('statusLeft').textContent = '⏳ 添加任务...';
+
+  try {
+    const data = await api('POST', '/api/tasks', { url, max_segments: segments });
+    document.getElementById('statusLeft').textContent = '✅ 任务已添加 (ID: ' + data.task_id.slice(0, 8) + ')';
+    refreshAll();
+  } catch (e) {
+    document.getElementById('statusLeft').textContent = '❌ 添加失败: ' + e.message;
+  }
+}
+
+// ── 渲染任务 ──
+function renderTask(task) {
+  const div = document.createElement('div');
+  div.className = 'task-item';
+  div.id = 'task-' + task.task_id;
+
+  const status = task.status || 'UNKNOWN';
+  const pct = (task.progress || 0).toFixed(1);
+  const barClass = status === 'PAUSED' ? 'paused' : status === 'FAILED' ? 'failed' : '';
+
+  let infoHtml = '';
+  if (task.downloaded !== undefined) {
+    infoHtml = `
+      <span>📦 ${formatSize(task.downloaded)} / ${formatSize(task.total_size)}</span>
+      <span>🚀 ${formatSpeed(task.speed)}</span>
+      <span>⏱ ${formatTime(task.elapsed)}${task.eta ? ' / ETA ' + formatTime(task.eta) : ''}</span>
+      <span>🧩 ${task.segments_completed || 0}/${task.segments_total || 0}</span>
+    `;
+  } else if (task.size) {
+    infoHtml = `<span>📦 ${formatSize(task.size)}</span>`;
+  }
+
+  let actionsHtml = '';
+  if (status === 'RUNNING') {
+    actionsHtml = `<button class="btn btn-secondary btn-sm" onclick="pauseTask('${task.task_id}')">⏸ 暂停</button>
+                   <button class="btn btn-danger btn-sm" onclick="cancelTask('${task.task_id}')">✕ 取消</button>`;
+  } else if (status === 'PAUSED') {
+    actionsHtml = `<button class="btn btn-primary btn-sm" onclick="resumeTask('${task.task_id}')">▶ 恢复</button>
+                   <button class="btn btn-danger btn-sm" onclick="cancelTask('${task.task_id}')">✕ 取消</button>`;
+  } else if (status === 'PENDING') {
+    actionsHtml = `<button class="btn btn-danger btn-sm" onclick="cancelTask('${task.task_id}')">✕ 取消</button>`;
+  }
+
+  div.innerHTML = `
+    <div class="task-header">
+      <span class="task-url" title="${escapeHtml(task.url)}">🔗 ${escapeHtml(task.url)}</span>
+      <span class="task-status status-${status}">${status}</span>
+    </div>
+    <div class="progress-bar"><div class="progress-fill ${barClass}" style="width:${pct}%"></div></div>
+    <div class="task-info">${infoHtml}</div>
+    ${actionsHtml ? `<div class="task-actions">${actionsHtml}</div>` : ''}
+  `;
+
+  return div;
+}
+
+// ── 刷新任务列表 ──
+async function refreshAll() {
+  try {
+    const data = await api('GET', '/api/tasks');
+    const container = document.getElementById('taskList');
+    container.innerHTML = '';
+
+    const tasks = data.tasks || [];
+    if (tasks.length === 0) {
+      container.innerHTML = '<div class="empty">暂无任务</div>';
+    } else {
+      tasks.forEach(t => container.appendChild(renderTask(t)));
+    }
+
+    // 更新统计
+    document.getElementById('statActive').textContent = tasks.filter(t => t.status === 'RUNNING').length;
+    document.getElementById('statPending').textContent = tasks.filter(t => t.status === 'PENDING').length;
+    document.getElementById('statCompleted').textContent = tasks.filter(t => t.status === 'COMPLETED').length;
+    document.getElementById('statusLeft').textContent = `🔄 更新于 ${new Date().toLocaleTimeString()}`;
+  } catch (e) {
+    document.getElementById('statusLeft').textContent = '⚠️ 连接失败，自动重连中...';
+  }
+}
+
+// ── 任务操作 ──
+async function pauseTask(id) { try { await api('POST', `/api/tasks/${id}/pause`); refreshAll(); } catch(e) {} }
+async function resumeTask(id) { try { await api('POST', `/api/tasks/${id}/resume`); refreshAll(); } catch(e) {} }
+async function cancelTask(id) { try { await api('POST', `/api/tasks/${id}/cancel`); refreshAll(); } catch(e) {} }
+
+// ── 轮询 ──
+function startPolling() {
+  async function poll() {
+    try {
+      await refreshAll();
+    } catch(e) { /* 忽略轮询错误 */ }
+    pollTimer = setTimeout(poll, POLL_INTERVAL);
+  }
+  pollTimer = setTimeout(poll, 500);
+}
+
+// ── 启动 ──
+document.addEventListener('DOMContentLoaded', () => {
+  startPolling();
+  document.getElementById('inputUrl').addEventListener('keydown', e => {
+    if (e.key === 'Enter') addTask();
+  });
+});
+</script>
+</body>
+</html>
