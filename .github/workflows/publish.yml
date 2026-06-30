@@ -1,0 +1,51 @@
+name: Publish to PyPI
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+  id-token: write  # 用于 Trusted Publishing (OIDC)
+
+jobs:
+  build-and-publish:
+    name: Build & Publish to PyPI
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install build twine
+
+      - name: Build package
+        run: python -m build
+
+      - name: Check package
+        run: twine check dist/*
+
+      # ── 方式 1: Trusted Publishing (推荐) ──
+      # 需要在 PyPI 上配置: https://pypi.org/manage/account/publishing/
+      # 添加: Owner = cyqmq, Repository = hyperDL, Workflow = publish.yml
+      - name: Publish to PyPI (Trusted Publishing)
+        if: ${{ vars.PYPI_TRUSTED_PUBLISH == 'true' }}
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+      # ── 方式 2: API Token (备用) ──
+      # 在 GitHub Repo Settings > Secrets and variables > Actions 添加:
+      #   PYPI_API_TOKEN: pypi-xxxxx
+      - name: Publish to PyPI (API Token)
+        if: ${{ secrets.PYPI_API_TOKEN != '' }}
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI_API_TOKEN }}
+          verify-metadata: true
