@@ -15,6 +15,8 @@ from .models import (
     Headers,
 )
 from .utils import format_bytes, format_speed, format_time, get_downloads_folder
+from .core import HyperDownloader
+from .config_manager import AppConfig, load_config, save_config
 
 __all__ = [
     # 枚举
@@ -31,6 +33,10 @@ __all__ = [
     "Headers",
     # 核心入口
     "HyperDownloader",
+    # 配置管理
+    "AppConfig",
+    "load_config",
+    "save_config",
     # 工具
     "get_downloads_folder",
     "format_bytes",
@@ -38,4 +44,4 @@ __all__ = [
     "format_time",
 ]
 
-__version__ = "0.1.0"
+__version__ = "1.0.1"

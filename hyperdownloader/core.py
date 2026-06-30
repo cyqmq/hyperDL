@@ -10,6 +10,7 @@ import logging
 import os
 from typing import Optional
 
+from .config_manager import AppConfig, load_config, save_config
 from .downloader import TaskDownloader
 from .enums import DownloadStatus, SchedulerPolicy
 from .models import (
@@ -21,7 +22,7 @@ from .models import (
     ProxyConfig,
 )
 from .scheduler import DownloadScheduler
-from .utils import format_bytes, format_speed, format_time
+from .utils import format_bytes, format_speed, format_time, get_downloads_folder
 
 logger = logging.getLogger("hyperdownloader")
 
@@ -30,47 +31,106 @@ class HyperDownloader:
     """
     HyperDownloader 核心引擎。
 
-    使用示例::
+    支持从 config.json 读取配置::
 
-        from hyperdownloader import HyperDownloader, DownloadTask
+        # 从配置文件加载
+        dl = HyperDownloader.from_config("config.json")
 
-        dl = HyperDownloader(max_concurrent=5)
-        dl.start()
+        # 或手动指定参数（会覆盖配置文件中的值）
+        dl = HyperDownloader(max_concurrent=5, config_path="config.json")
 
-        task = DownloadTask(
-            url="https://example.com/file.zip",
-            save_dir="~/Downloads",
-        )
-        dl.download(task)
-
-        dl.wait_all()
-        dl.stop()
+        # 编程方式修改配置
+        dl.load_config("config.json")
+        dl.debug = True
+        dl.max_concurrent = 5
     """
 
     def __init__(
         self,
-        max_concurrent: int = 3,
+        max_concurrent: Optional[int] = None,
         policy: SchedulerPolicy = SchedulerPolicy.FIFO,
         global_speed_limit: Optional[int] = None,
         default_config: Optional[DownloadConfig] = None,
+        config_path: Optional[str] = None,
     ):
         """
         Args:
-            max_concurrent: 最大并发下载任务数
+            max_concurrent: 最大并发下载任务数（覆盖配置文件）
             policy: 任务调度策略
-            global_speed_limit: 全局下载速度限制（字节/秒）
-            default_config: 默认下载配置，每个任务可单独覆盖
+            global_speed_limit: 全局下载速度限制（覆盖配置文件）
+            default_config: 默认下载配置
+            config_path: 配置文件路径，None 则自动搜索
         """
+        # 加载配置文件
+        self._app_config: AppConfig = load_config(config_path)
+
+        # 代码参数覆盖配置文件
+        if max_concurrent is not None:
+            self._app_config.max_concurrent = max_concurrent
+        if global_speed_limit is not None:
+            self._app_config.speed_limit = global_speed_limit
+
         self._default_config = default_config or DownloadConfig()
         self._scheduler = DownloadScheduler(
-            max_concurrent=max_concurrent,
+            max_concurrent=self._app_config.max_concurrent,
             policy=policy,
-            global_speed_limit=global_speed_limit,
+            global_speed_limit=self._app_config.speed_limit,
         )
         self._started = False
-
-        # 设置日志格式
         self._setup_logging()
+
+    @classmethod
+    def from_config(cls, config_path: str = "config.json") -> "HyperDownloader":
+        """从配置文件创建引擎实例"""
+        return cls(config_path=config_path)
+
+    # ── 配置管理 ──
+
+    def load_config(self, config_path: Optional[str] = None) -> None:
+        """重新加载配置文件"""
+        self._app_config = load_config(config_path)
+        self._apply_config()
+        logger.info("配置已重新加载")
+
+    def save_config(self, config_path: Optional[str] = None) -> str:
+        """保存当前配置到文件"""
+        return save_config(self._app_config, config_path)
+
+    def _apply_config(self) -> None:
+        """将 AppConfig 应用到引擎当前设置"""
+        self._scheduler._max_concurrent = self._app_config.max_concurrent
+        self._scheduler._rate_limiter.max_rate = self._app_config.speed_limit
+
+    # ── 配置属性 ──
+
+    @property
+    def debug(self) -> bool:
+        return self._app_config.debug
+
+    @debug.setter
+    def debug(self, value: bool) -> None:
+        self._app_config.debug = value
+        level = logging.DEBUG if value else logging.INFO
+        logging.getLogger("hyperdownloader").setLevel(level)
+        logger.info("调试模式: %s", "开启" if value else "关闭")
+
+    @property
+    def max_concurrent(self) -> int:
+        return self._scheduler._max_concurrent
+
+    @max_concurrent.setter
+    def max_concurrent(self, value: int) -> None:
+        self._scheduler._max_concurrent = max(1, value)
+        self._app_config.max_concurrent = self._scheduler._max_concurrent
+
+    @property
+    def global_speed_limit(self) -> Optional[int]:
+        return self._scheduler._rate_limiter.max_rate
+
+    @global_speed_limit.setter
+    def global_speed_limit(self, value: Optional[int]) -> None:
+        self._scheduler._rate_limiter.max_rate = value
+        self._app_config.speed_limit = value
 
     # ── 生命周期 ──
 
@@ -174,24 +234,6 @@ class HyperDownloader:
     @on_task_progress.setter
     def on_task_progress(self, callback: Optional[callable]) -> None:
         self._scheduler.on_task_progress = callback
-
-    # ── 配置 ──
-
-    @property
-    def max_concurrent(self) -> int:
-        return self._scheduler._max_concurrent
-
-    @max_concurrent.setter
-    def max_concurrent(self, value: int) -> None:
-        self._scheduler._max_concurrent = max(1, value)
-
-    @property
-    def global_speed_limit(self) -> Optional[int]:
-        return self._scheduler._rate_limiter.max_rate
-
-    @global_speed_limit.setter
-    def global_speed_limit(self, value: Optional[int]) -> None:
-        self._scheduler._rate_limiter.max_rate = value
 
     # ── 工具方法 ──
 
